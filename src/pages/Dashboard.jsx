@@ -1,15 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
-/**
- * Dashboard Component: Displays analytics from past game sessions.
- * @param {object} props - Component props.
- * @param {function} props.onGoHome - Callback to return to the home screen.
- */
 const Dashboard = ({ onGoHome }) => {
     const [sessions, setSessions] = useState([]);
 
-    // On component mount, load the data from Local Storage.
-    // This is where you would fetch data from Firebase instead.
     useEffect(() => {
         try {
             const savedData = JSON.parse(localStorage.getItem('gameSessions')) || [];
@@ -22,57 +15,58 @@ const Dashboard = ({ onGoHome }) => {
         }
     }, []);
 
-    // A simple calculation for an "analytic" view
-    const averageScore = sessions.length > 0 
-        ? (sessions.reduce((acc, s) => acc + s.score, 0) / sessions.length).toFixed(0)
-        : 0;
+    // Analytics Calculations
+    const totalGames = sessions.length;
+    const averageScore = totalGames > 0 ? (sessions.reduce((acc, s) => acc + s.score, 0) / totalGames).toFixed(0) : 0;
+    const completedGames = sessions.filter(s => s.status === 'Completed');
+    const averageTime = completedGames.length > 0 ? (completedGames.reduce((acc, s) => acc + s.timeTaken, 0) / completedGames.length).toFixed(1) : 0;
 
     return (
-        <div 
-            className="p-8 bg-white rounded-xl shadow-lg w-full max-w-3xl mx-auto"
-            style={{ borderColor: '#91C8E4' }}
-        >
-            <h1 className="text-3xl font-bold text-center mb-6" style={{ color: '#4682A9' }}>
-                Game Analytics
-            </h1>
+        <div className="p-8 bg-white rounded-xl shadow-lg w-full max-w-3xl mx-auto">
+            <h1 className="text-3xl font-bold text-center mb-6 text-blue-700">Kid's Dashboard</h1>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="p-4 rounded-lg" style={{ backgroundColor: 'rgba(145, 200, 228, 0.1)' }}>
-                    <h3 className="text-sm font-semibold" style={{ color: '#749BC2' }}>Total Games Played</h3>
-                    <p className="text-2xl font-bold" style={{ color: '#4682A9' }}>{sessions.length}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-center">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                    <h3 className="text-sm font-semibold text-blue-500">Total Games Played</h3>
+                    <p className="text-3xl font-bold text-blue-800">{totalGames}</p>
                 </div>
-                <div className="p-4 rounded-lg" style={{ backgroundColor: 'rgba(145, 200, 228, 0.1)' }}>
-                    <h3 className="text-sm font-semibold" style={{ color: '#749BC2' }}>Average Score</h3>
-                    <p className="text-2xl font-bold" style={{ color: '#4682A9' }}>{averageScore}</p>
+                <div className="p-4 bg-green-50 rounded-lg">
+                    <h3 className="text-sm font-semibold text-green-500">Average Score</h3>
+                    <p className="text-3xl font-bold text-green-800">{averageScore}</p>
+                </div>
+                <div className="p-4 bg-yellow-50 rounded-lg">
+                    <h3 className="text-sm font-semibold text-yellow-500">Avg. Time (Completed)</h3>
+                    <p className="text-3xl font-bold text-yellow-800">{averageTime}s</p>
                 </div>
             </div>
 
             {/* Session History */}
-            <h2 className="text-xl font-bold mb-4" style={{ color: '#4682A9' }}>Session History</h2>
-            <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+            <h2 className="text-xl font-bold mb-4 text-blue-700">Game History</h2>
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-2 border rounded-lg p-2 bg-gray-50">
                 {sessions.length > 0 ? (
                     sessions.map((session, index) => (
-                        <div key={index} className="flex justify-between items-center p-3 rounded-lg" style={{ backgroundColor: 'rgba(116, 155, 194, 0.1)'}}>
+                        <div key={index} className="flex justify-between items-center p-3 rounded-lg bg-white shadow-sm">
                             <div>
-                                <p className="font-semibold" style={{ color: '#4682A9' }}>{session.game}</p>
-                                <p className="text-xs" style={{ color: '#749BC2' }}>{new Date(session.date).toLocaleString()}</p>
+                                <p className="font-semibold text-gray-800">{session.game} - <span className={session.status === 'Completed' ? 'text-green-600' : 'text-red-600'}>{session.status}</span></p>
+                                <p className="text-xs text-gray-500">{new Date(session.date).toLocaleString()}</p>
                             </div>
-                            <p className="font-bold text-lg" style={{ color: '#4682A9' }}>{session.score}</p>
+                            <div className="text-right">
+                                <p className="font-bold text-lg text-blue-600">{session.score} pts</p>
+                                <p className="text-sm text-gray-500">{session.timeTaken}s</p>
+                            </div>
                         </div>
                     ))
                 ) : (
-                    <p style={{ color: '#749BC2' }}>No game data found. Play a game to see your stats!</p>
+                    <p className="text-center text-gray-500 py-4">No game data found. Play a game to see your stats!</p>
                 )}
             </div>
 
+            {/* Back Button */}
             <div className="text-center mt-8">
-                <button 
-                    onClick={onGoHome} 
-                    className="text-white font-bold py-2 px-6 rounded-lg transition-colors"
-                    style={{ backgroundColor: '#4682A9' }}
-                    onMouseOver={e => e.currentTarget.style.backgroundColor = '#749BC2'}
-                    onMouseOut={e => e.currentTarget.style.backgroundColor = '#4682A9'}
+                <button
+                    onClick={onGoHome}
+                    className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
                 >
                     Back to Home
                 </button>

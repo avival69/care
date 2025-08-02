@@ -1,34 +1,53 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 /**
- * Generates a base color and a slightly different "odd" color.
- * @param {number} difficultyOffset - The difference between the base and odd color.
- * @returns {{baseColor: string, oddColor: string}}
+ * Configuration for each sub-level of the game.
+ * Each object defines the prompt, colors, and an emoji to represent the animal.
+ * The animalColor and bgColor are chosen to be confusing for the specified type of color vision deficiency.
  */
-const generateColors = (difficultyOffset) => {
-    const r = Math.floor(Math.random() * 256);
-    const g = Math.floor(Math.random() * 256);
-    const b = Math.floor(Math.random() * 256);
-    const baseColor = `rgb(${r}, ${g}, ${b})`;
-    const newR = Math.max(0, Math.min(255, r - difficultyOffset));
-    const newG = Math.max(0, Math.min(255, g - difficultyOffset));
-    const newB = Math.max(0, Math.min(255, b - difficultyOffset));
-    const oddColor = `rgb(${newR}, ${newG}, ${newB})`;
-    return { baseColor, oddColor };
-};
+const subLevels = [
+    {
+        name: 'Protanopia',
+        prompt: 'Can you find the red panda hiding in the leaves?',
+        animal: '🐼',
+        animalColor: 'rgb(200, 80, 70)',   // Muted red
+        bgColor: 'rgb(90, 110, 90)',       // Confusing green/brown
+    },
+    {
+        name: 'Deuteranopia',
+        prompt: 'Where is the green parrot on the tree?',
+        animal: '🦜',
+        animalColor: 'rgb(120, 160, 120)', // Muted green
+        bgColor: 'rgb(170, 130, 110)',   // Confusing reddish-brown
+    },
+    {
+        name: 'Tritanopia',
+        prompt: 'Spot the blue frog near the water!',
+        animal: '🐸', // Note: Emoji is green, but the color wash is blue
+        animalColor: 'rgb(100, 140, 220)', // A shade of blue
+        bgColor: 'rgb(110, 150, 140)',   // Confusing turquoise/green
+    },
+    {
+        name: 'Achromatopsia',
+        prompt: 'Find the gray squirrel on the rock.',
+        animal: '🐿️',
+        animalColor: 'rgb(140, 140, 140)', // A shade of gray
+        bgColor: 'rgb(150, 150, 150)',   // A slightly different shade of gray
+    },
+];
 
 /**
- * Saves a completed game session to Local Storage.
+ * Saves a completed game session.
  * @param {number} finalScore - The score from the game.
+ * @param {string} status - The final status ('Completed' or 'Game Over').
  */
-const saveGameSession = (finalScore) => {
+const saveGameSession = (finalScore, status) => {
     const session = {
         date: new Date().toISOString(),
-        game: 'Color Spotter',
+        game: 'Animal Hide & Seek',
         score: finalScore,
+        status: status,
     };
-
-    // This is where you would interact with Firebase instead.
     try {
         const existingData = JSON.parse(localStorage.getItem('gameSessions')) || [];
         existingData.push(session);
@@ -38,43 +57,33 @@ const saveGameSession = (finalScore) => {
     }
 };
 
-
 /**
- * Level1 Component: The "Color Spotter" game screen.
+ * Level1 Component: The "Animal Hide & Seek" game screen.
  * @param {object} props - Component props.
  * @param {function} props.onGoHome - Callback to return to the home screen.
  */
 const Level1 = ({ onGoHome }) => {
-    const [gameState, setGameState] = useState('playing');
+    const [gameState, setGameState] = useState('playing'); // 'playing', 'gameOver', 'gameWon'
     const [score, setScore] = useState(0);
     const [timer, setTimer] = useState(20);
-    const [grid, setGrid] = useState([]);
-    const [oddOneIndex, setOddOneIndex] = useState(-1);
-    const [gridSize, setGridSize] = useState(3);
-    const [offset, setOffset] = useState(40);
+    const [currentLevelIndex, setCurrentLevelIndex] = useState(0);
+    const [animalPosition, setAnimalPosition] = useState({ top: '50%', left: '50%' });
 
-    const nextRound = useCallback(() => {
-        const totalSquares = gridSize * gridSize;
-        const newOddOneIndex = Math.floor(Math.random() * totalSquares);
-        const { baseColor, oddColor } = generateColors(offset);
-        const newGrid = Array(totalSquares).fill(baseColor).map((color, index) => 
-            index === newOddOneIndex ? oddColor : color
-        );
-        
-        setOddOneIndex(newOddOneIndex);
-        setGrid(newGrid);
+    const currentLevel = subLevels[currentLevelIndex];
+
+    const startNextLevel = useCallback(() => {
+        // Generate a random position within the scene for the animal
+        const top = Math.floor(Math.random() * 85); // Use 85 to keep it fully in view
+        const left = Math.floor(Math.random() * 85);
+        setAnimalPosition({ top: `${top}%`, left: `${left}%` });
         setTimer(20);
-        
-        if (score > 0 && score % 30 === 0) {
-            setGridSize(prev => Math.min(prev + 1, 7));
-            setOffset(prev => Math.max(prev - 5, 10));
-        }
+    }, []);
 
-    }, [gridSize, offset, score]);
-    
     useEffect(() => {
-        nextRound();
-    }, [score]);
+        if (gameState === 'playing') {
+            startNextLevel();
+        }
+    }, [currentLevelIndex, gameState, startNextLevel]);
 
     useEffect(() => {
         if (gameState !== 'playing') return;
@@ -91,69 +100,91 @@ const Level1 = ({ onGoHome }) => {
         return () => clearInterval(interval);
     }, [gameState]);
 
-    // When game state changes to 'gameOver', save the session.
     useEffect(() => {
         if (gameState === 'gameOver') {
-            saveGameSession(score);
+            saveGameSession(score, 'Game Over');
+        } else if (gameState === 'gameWon') {
+            saveGameSession(score, 'Completed');
         }
     }, [gameState, score]);
 
-
-    const handleSquareClick = (index) => {
+    const handleAnimalClick = (e) => {
+        e.stopPropagation(); // Prevents the background 'miss' click from firing
         if (gameState !== 'playing') return;
-        if (index === oddOneIndex) {
-            setScore(prev => prev + 10);
+
+        setScore(prev => prev + 10 + timer); // Add score + time bonus
+
+        if (currentLevelIndex < subLevels.length - 1) {
+            setCurrentLevelIndex(prev => prev + 1);
         } else {
-            setGameState('gameOver');
+            setGameState('gameWon');
         }
     };
 
-    if (gameState === 'gameOver') {
+    const handleMiss = () => {
+        if (gameState !== 'playing') return;
+        setGameState('gameOver');
+    };
+
+    if (gameState === 'gameOver' || gameState === 'gameWon') {
+        const isWin = gameState === 'gameWon';
         return (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-lg shadow-xl p-8 text-center max-w-sm w-full">
-                    <h2 className="text-3xl font-bold mb-4" style={{ color: '#4682A9' }}>Game Over</h2>
-                    <p className="text-lg mb-6" style={{ color: '#749BC2' }}>Final Score: <span className="font-bold" style={{ color: '#4682A9' }}>{score}</span></p>
-                    <div className="flex justify-center">
-                        <button 
-                            onClick={onGoHome} 
-                            className="text-white font-bold py-2 px-6 rounded-lg transition-colors"
-                            style={{ backgroundColor: '#4682A9' }}
-                            onMouseOver={e => e.currentTarget.style.backgroundColor = '#749BC2'}
-                            onMouseOut={e => e.currentTarget.style.backgroundColor = '#4682A9'}
-                        >
-                            Back to Home
-                        </button>
-                    </div>
+                    <h2 className="text-3xl font-bold mb-4" style={{ color: isWin ? '#28a745' : '#dc3545' }}>
+                        {isWin ? 'You Won! 🎉' : 'Game Over'}
+                    </h2>
+                    <p className="text-lg mb-6 text-gray-600">
+                        Final Score: <span className="font-bold text-gray-800">{score}</span>
+                    </p>
+                    <button
+                        onClick={onGoHome}
+                        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                    >
+                        Back to Home
+                    </button>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="w-full max-w-xl mx-auto text-center">
-            <div className="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow-sm">
-                <div>
-                    <span className="text-sm font-medium" style={{ color: '#749BC2' }}>Score: </span>
-                    <span className="text-lg font-bold" style={{ color: '#4682A9' }}>{score}</span>
+        <div className="w-full max-w-2xl mx-auto text-center">
+            {/* Header with Score, Timer, and Prompt */}
+            <div className="mb-4 p-4 bg-white rounded-lg shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                    <div>
+                        <span className="text-lg font-medium text-gray-500">Score: </span>
+                        <span className="text-xl font-bold text-blue-600">{score}</span>
+                    </div>
+                    <div>
+                        <span className="text-lg font-medium text-gray-500">Time: </span>
+                        <span className="text-xl font-bold text-red-600">{timer}</span>
+                    </div>
                 </div>
-                <div>
-                    <span className="text-sm font-medium" style={{ color: '#749BC2' }}>Time: </span>
-                    <span className="text-lg font-bold text-red-600">{timer}</span>
-                </div>
+                <p className="text-xl font-semibold text-gray-700">
+                    {currentLevel.prompt}
+                </p>
             </div>
-            <div 
-                className="w-full aspect-square p-3 rounded-lg shadow-inner grid gap-2"
-                style={{ backgroundColor: 'rgba(116, 155, 194, 0.2)' }}
+
+            {/* Game Scene: You can replace the background color with a background image */}
+            <div
+                className="relative w-full aspect-video rounded-lg shadow-inner overflow-hidden cursor-pointer"
+                style={{ backgroundColor: currentLevel.bgColor }}
+                onClick={handleMiss}
             >
-                {grid.map((color, index) => (
-                    <div
-                        key={index}
-                        className="w-full h-full rounded-md cursor-pointer transition-transform transform hover:scale-105"
-                        style={{ backgroundColor: color }}
-                        onClick={() => handleSquareClick(index)}
-                    />
-                ))}
+                {/* The Animal: You can replace this div with an <img> tag */}
+                <div
+                    className="absolute w-16 h-16 flex items-center justify-center text-4xl rounded-full cursor-pointer transition-all duration-200 transform hover:scale-110"
+                    style={{
+                        top: animalPosition.top,
+                        left: animalPosition.left,
+                        backgroundColor: currentLevel.animalColor,
+                    }}
+                    onClick={handleAnimalClick}
+                >
+                    {currentLevel.animal}
+                </div>
             </div>
         </div>
     );
