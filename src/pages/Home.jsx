@@ -1,23 +1,27 @@
 import React from 'react';
 
 /**
- * Home Component: Level selection menu with Level 1 and Level 2 enabled.
+ * Home Component: Level selection menu with Levels 1-4 enabled.
  * @param {function} onStartLevel1 - Callback to start Level 1
  * @param {function} onStartLevel2 - Callback to start Level 2
+ * @param {function} onStartLevel3 - Callback to start Level 3
+ * @param {function} onStartLevel4 - Callback to start Level 4
  * @param {function} onGoToDashboard - Callback to go to Dashboard
  */
-const Home = ({ onStartLevel1, onStartLevel2, onGoToDashboard }) => {
+const Home = ({ onStartLevel1, onStartLevel2, onStartLevel3, onStartLevel4, onGoToDashboard }) => {
   const levels = [
     { name: 'Level 1', description: 'Color Spotter', enabled: true },
     { name: 'Level 2', description: 'Emotion Detector', enabled: true },
-    { name: 'Level 3', description: 'Coming Soon', enabled: false },
-    { name: 'Level 4', description: 'Coming Soon', enabled: false },
+    { name: 'Level 3', description: 'Letter-Sound Match', enabled: true },
+    { name: 'Level 4', description: 'Symbol Spotter', enabled: true }, // Enable Level 4
     { name: 'Level 5', description: 'Coming Soon', enabled: false },
   ];
 
   const handleLevelClick = (index) => {
     if (index === 0) onStartLevel1();
     if (index === 1) onStartLevel2();
+    if (index === 2) onStartLevel3();
+    if (index === 3) onStartLevel4(); // Add click handler for Level 4
   };
 
   return (
@@ -54,7 +58,7 @@ const Home = ({ onStartLevel1, onStartLevel2, onGoToDashboard }) => {
                     }
                   `}
                 >
-                  <h3 className="text-3xl font-bold ${level.enabled ? 'text-[#1e40af]' : 'text-gray-400'}">
+                  <h3 className={`text-3xl font-bold ${level.enabled ? 'text-[#1e40af]' : 'text-gray-400'}`}>
                     {index + 1}
                   </h3>
                   <p className="mt-2 text-sm font-medium">
