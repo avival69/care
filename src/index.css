@@ -2,3 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #F9FAFB; /* This is the same as Tailwind's bg-gray-50 */
+  /* Remove any border or outline properties if they exist */
+  border: none;
+  outline: none;
+}
