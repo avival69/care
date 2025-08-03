@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as faceapi from 'face-api.js';
 import { LightBulbIcon, ArrowLeftIcon, SpeakerWaveIcon, SpeakerXMarkIcon, TrophyIcon } from '@heroicons/react/24/solid';
 import { db } from '../firebase';
-import { doc, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 // ----- Sound/Speech helpers -----
 const speak = (text, isMuted) => {
@@ -54,7 +54,10 @@ const FaceEmotionDetector = ({ onExpressionChange }) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(async () => {
       if (!videoRef.current || !modelsLoaded) return;
-      const detections = await faceapi.detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+      const detections = await faceapi.detectSingleFace(
+        videoRef.current,
+        new faceapi.TinyFaceDetectorOptions()
+      ).withFaceExpressions();
       if (detections) {
         const dominantExpression = Object.keys(detections.expressions).reduce(
           (a, b) => detections.expressions[a] > detections.expressions[b] ? a : b
@@ -68,8 +71,17 @@ const FaceEmotionDetector = ({ onExpressionChange }) => {
       {!isCameraOn && <div className="text-white text-xs text-center p-2">Starting Camera...</div>}
       <video
         ref={videoRef}
-        autoPlay muted onPlay={handleVideoPlay}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: isCameraOn ? 'block' : 'none' }} />
+        autoPlay
+        muted
+        onPlay={handleVideoPlay}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: 'scaleX(-1)',
+          display: isCameraOn ? 'block' : 'none'
+        }}
+      />
     </div>
   );
 };
@@ -95,7 +107,7 @@ const AnimalCharacter = ({ emotion }) => {
   );
 };
 
-const Confetti = () => { /* Visual confetti left as exercise. */ return null; };
+const Confetti = () => null;
 
 const InstructionsModal = ({ onStart }) => (
   <div className="fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center z-50 p-4">
@@ -145,12 +157,10 @@ export default function Level2({ onGoHome, user }) {
 
   const currentEmotion = emotionsToGuess[currentEmotionIndex];
 
-  // Start new prompt: reset timer
   useEffect(() => {
     if (gameState === 'playing') setStartTime(Date.now());
   }, [currentEmotionIndex, gameState]);
 
-  // Speaking instructions
   useEffect(() => {
     if (gameState === 'instructions') {
       speak(
@@ -161,7 +171,6 @@ export default function Level2({ onGoHome, user }) {
     return () => window.speechSynthesis.cancel();
   }, [gameState, isMuted]);
 
-  // When detected emotion matches current required: record trial, move to next
   useEffect(() => {
     if (gameState !== 'playing' || !currentEmotion) return;
     if (detectedExpression === currentEmotion) {
@@ -182,7 +191,7 @@ export default function Level2({ onGoHome, user }) {
     }
   }, [detectedExpression, currentEmotion, gameState, currentEmotionIndex, isMuted, startTime, emotionsToGuess.length]);
 
-  // On game end, save the session
+  // ----- Key change: save with setDoc -----
   useEffect(() => {
     if (gameState !== 'end' || trials.length !== emotionsToGuess.length) return;
     const total_trials = trials.length;
@@ -210,14 +219,30 @@ export default function Level2({ onGoHome, user }) {
       score: correct_count,
       timeTaken: trials.reduce((sum, t) => sum + t.response_time, 0),
     };
-    const userDocRef = doc(db, "artifacts", "default-app-id", "users", kidName);
-    updateDoc(userDocRef, { sessions: arrayUnion(session) }).catch(console.error);
+    // Firestore saving using setDoc
+    const saveWithSetDoc = async () => {
+      try {
+        const userDocRef = doc(db, "artifacts", "default-app-id", "users", kidName);
+        const userSnap = await getDoc(userDocRef);
+        let sessions = [];
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          sessions = data.sessions || [];
+        }
+        sessions.push(session);
+        await setDoc(userDocRef, { sessions }, { merge: true });
+      } catch (e) {
+        console.error("Failed saving session:", e);
+      }
+    };
+    saveWithSetDoc();
+
+    // Save to localStorage, unchanged
     const allSessions = JSON.parse(localStorage.getItem('gameSessions') || '[]');
     allSessions.push(session);
     localStorage.setItem('gameSessions', JSON.stringify(allSessions));
   }, [gameState, trials, user, emotionsToGuess.length]);
 
-  // UI Handlers
   const startGame = () => {
     window.speechSynthesis.cancel();
     setTrials([]);

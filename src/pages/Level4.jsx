@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { doc, updateDoc, arrayUnion } from "firebase/firestore";
-import { db } from "../firebase"; // adjust path as needed
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase"; // Adjust path if needed
 
 const ALL_SYMBOLS = [
   "⭐", "🌙", "☀️", "❤️", "💎", "🚀", "🍎", "⚽", "🐱", "🦋",
   "🎈", "🍓", "🔑", "🎸", "☂️", "🍕", "🎁"
 ];
+
 const GAME_DURATION_MS = 30000;
 const TARGET_PROBABILITY = 0.3;
 const OBJECT_SPAWN_INTERVAL_MS = 700;
@@ -51,6 +52,12 @@ export default function Level4({ onGoHome, userId }) {
   const spawnIntervalId = useRef();
   const gameTimeoutId = useRef();
 
+  // Debug: Log state transitions
+  useEffect(() => {
+    console.log("[Level4 DEBUG] gameState:", gameState, "| targetSymbol:", targetSymbol, "| userId:", userId);
+  }, [gameState, targetSymbol, userId]);
+
+  // Cleanup all timers/loops
   const cleanup = () => {
     if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     if (spawnIntervalId.current) clearInterval(spawnIntervalId.current);
@@ -59,7 +66,8 @@ export default function Level4({ onGoHome, userId }) {
 
   const startGame = () => {
     cleanup();
-    setTargetSymbol(ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)]);
+    const newTargetSymbol = ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
+    setTargetSymbol(newTargetSymbol);
     setStats({
       hits: 0,
       misses: 0,
@@ -69,6 +77,7 @@ export default function Level4({ onGoHome, userId }) {
     });
     gameObjectsRef.current = [];
     setGameState("playing");
+    console.log("[Level4 DEBUG] Game started. New target:", newTargetSymbol);
   };
 
   const spawnObject = useCallback(() => {
@@ -81,11 +90,10 @@ export default function Level4({ onGoHome, userId }) {
       : ALL_SYMBOLS.filter((s) => s !== targetSymbol)[
           Math.floor(Math.random() * (ALL_SYMBOLS.length - 1))
         ];
-
     if (isTarget) {
       setStats((prev) => ({ ...prev, totalTargets: prev.totalTargets + 1 }));
+      console.log("[Level4 DEBUG] Spawned TARGET symbol:", symbol);
     }
-
     // Random edge start position
     const edges = [
       () => ({ x: Math.random() * canvas.width, y: -30 }),
@@ -93,7 +101,6 @@ export default function Level4({ onGoHome, userId }) {
       () => ({ x: Math.random() * canvas.width, y: canvas.height + 30 }),
       () => ({ x: -30, y: Math.random() * canvas.height }),
     ];
-
     const { x: startX, y: startY } = edges[Math.floor(Math.random() * 4)]();
 
     // Random target in hit zone
@@ -121,6 +128,7 @@ export default function Level4({ onGoHome, userId }) {
     });
   }, [targetSymbol]);
 
+  // The animation/game loop
   const gameLoop = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -148,7 +156,6 @@ export default function Level4({ onGoHome, userId }) {
       ) {
         obj.hasBeenInZone = true;
       }
-
       if (
         obj.x < -40 ||
         obj.x > canvas.width + 40 ||
@@ -157,29 +164,31 @@ export default function Level4({ onGoHome, userId }) {
       ) {
         if (obj.isTarget && obj.hasBeenInZone) {
           setStats((prev) => ({ ...prev, misses: prev.misses + 1 }));
+          console.log("[Level4 DEBUG] Missed a TARGET symbol.");
         }
         gameObjectsRef.current.splice(idx, 1);
       }
     });
-
     animationFrameId.current = requestAnimationFrame(gameLoop);
   }, []);
 
+  // Start or cleanup game on state change
   useEffect(() => {
     if (gameState === "playing") {
       animationFrameId.current = requestAnimationFrame(gameLoop);
       spawnIntervalId.current = setInterval(spawnObject, OBJECT_SPAWN_INTERVAL_MS);
-      gameTimeoutId.current = setTimeout(() => setGameState("report"), GAME_DURATION_MS);
+      gameTimeoutId.current = setTimeout(() => {
+        console.log("[Level4 DEBUG] Time up! Moving to report.");
+        setGameState("report");
+      }, GAME_DURATION_MS);
     }
     return cleanup;
   }, [gameState, gameLoop, spawnObject]);
 
   const handleClickZone = () => {
     if (gameState !== "playing") return;
-
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const zoneX = (canvas.width - HIT_ZONE_SIZE) / 2;
     const zoneY = (canvas.height - HIT_ZONE_SIZE) / 2;
 
@@ -191,7 +200,6 @@ export default function Level4({ onGoHome, userId }) {
         obj.y > zoneY &&
         obj.y < zoneY + HIT_ZONE_SIZE
     );
-
     if (targetObj) {
       setStats((prev) => ({
         ...prev,
@@ -199,6 +207,7 @@ export default function Level4({ onGoHome, userId }) {
         trials: [...prev.trials, { is_correct: true, response_time: (Date.now() - targetObj.startTime) / 1000 }],
       }));
       setFeedback("correct");
+      console.log("[Level4 DEBUG] Correct click! Hit target symbol.");
       gameObjectsRef.current = gameObjectsRef.current.filter((o) => o !== targetObj);
     } else {
       setStats((prev) => ({
@@ -207,8 +216,8 @@ export default function Level4({ onGoHome, userId }) {
         trials: [...prev.trials, { is_correct: false, response_time: 0 }],
       }));
       setFeedback("incorrect");
+      console.log("[Level4 DEBUG] Incorrect click (false alarm).");
     }
-
     setTimeout(() => setFeedback(""), 300);
   };
 
@@ -225,8 +234,9 @@ export default function Level4({ onGoHome, userId }) {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
-  // Save session data to localStorage and Firestore on report
+  // Save session data to localStorage and Firestore on report, with debug logs
   useEffect(() => {
+    console.log("[Level4 DEBUG] Session save effect running...", { gameState, totalTargets: stats.totalTargets });
     if (gameState !== "report" || stats.totalTargets === 0) return;
 
     const sessionObj = {
@@ -243,17 +253,39 @@ export default function Level4({ onGoHome, userId }) {
       timeTaken: GAME_DURATION_MS / 1000,
     };
 
-    // Save to localStorage
-    const localSessions = JSON.parse(localStorage.getItem("gameSessions") || "[]");
-    localSessions.push(sessionObj);
-    localStorage.setItem("gameSessions", JSON.stringify(localSessions));
+    console.log("[Level4 DEBUG] About to save session:", sessionObj);
 
-    // Save to Firestore
+    // Save to localStorage
+    try {
+      const localSessions = JSON.parse(localStorage.getItem("gameSessions") || "[]");
+      localSessions.push(sessionObj);
+      localStorage.setItem("gameSessions", JSON.stringify(localSessions));
+      console.log("[Level4 DEBUG] Saved session to localStorage:", sessionObj);
+    } catch (err) {
+      console.error("🔥 [Level4 DEBUG] Error saving to localStorage:", err, sessionObj);
+    }
+
+    // Save to Firestore using setDoc with getDoc to merge safely
     if (userId) {
-      const userDocRef = doc(db, "artifacts", "default-app-id", "users", userId);
-      updateDoc(userDocRef, {
-        sessions: arrayUnion(sessionObj),
-      }).catch(console.error);
+      const saveSessionWithSetDoc = async () => {
+        try {
+          const userDocRef = doc(db, "artifacts", "default-app-id", "users", userId);
+          const userSnap = await getDoc(userDocRef);
+          let existingSessions = [];
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            existingSessions = Array.isArray(data.sessions) ? data.sessions : [];
+          }
+          existingSessions.push(sessionObj);
+          await setDoc(userDocRef, { sessions: existingSessions }, { merge: true });
+          console.log("✅ [Level4 DEBUG] Saved session with setDoc to Firestore:", sessionObj);
+        } catch (err) {
+          console.error("🔥 [Level4 DEBUG] Failed to save session with setDoc:", err, sessionObj);
+        }
+      };
+      saveSessionWithSetDoc();
+    } else {
+      console.warn("⚠️ [Level4 DEBUG] Skipping Firestore save: userId is", userId);
     }
   }, [gameState, stats, userId]);
 
@@ -261,7 +293,10 @@ export default function Level4({ onGoHome, userId }) {
     <div className="relative w-full min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center p-4 font-sans overflow-hidden">
       <div className="absolute top-4 left-4 z-20">
         <button
-          onClick={onGoHome}
+          onClick={() => {
+            console.log("[Level4 DEBUG] Manual exit to Home.");
+            onGoHome();
+          }}
           className="bg-white text-gray-900 px-4 py-2 rounded-lg shadow-md hover:bg-gray-200 flex items-center space-x-2"
           aria-label="Back to Home"
         >
@@ -271,15 +306,17 @@ export default function Level4({ onGoHome, userId }) {
           <span>Back to Home</span>
         </button>
       </div>
-
       {gameState === "intro" && (
         <div className="text-center bg-white p-8 rounded-2xl shadow-xl max-w-md animate-fade-in">
           <h1 className="text-4xl font-bold mb-4 text-indigo-900">Symbol Spotter</h1>
           <p className="mb-6 text-indigo-700 text-lg">
-            Symbols will fly in. Tap the box *only* when the special symbol is in the center.
+            Symbols will fly in. Tap the box <b>only</b> when the special symbol is in the center.
           </p>
           <button
-            onClick={startGame}
+            onClick={() => {
+              console.log("[Level4 DEBUG] Start Game button clicked.");
+              startGame();
+            }}
             className="bg-indigo-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-indigo-700 transition"
           >
             Start Game
@@ -296,14 +333,18 @@ export default function Level4({ onGoHome, userId }) {
             ref={canvasRef}
             width={window.innerWidth}
             height={window.innerHeight}
-            className="absolute top-0 left-0 w-full h-full"
+            className="absolute top-0 left-0 w-full h-full z-30 pointer-events-none"
           />
           <div
-            onClick={handleClickZone}
+            onClick={() => {
+              console.log("[Level4 DEBUG] Hit zone was clicked.");
+              handleClickZone();
+            }}
             className={`absolute rounded-3xl cursor-pointer transition-all duration-200 select-none
-          ${feedback === "correct" ? "bg-green-300 ring-4 ring-green-600" : ""}
-          ${feedback === "incorrect" ? "bg-red-300 ring-4 ring-red-600" : ""}
-          ${!feedback ? "bg-indigo-100 ring-2 ring-indigo-300" : ""}`}
+              ${feedback === "correct" ? "bg-green-300 ring-4 ring-green-600" : ""}
+              ${feedback === "incorrect" ? "bg-red-300 ring-4 ring-red-600" : ""}
+              ${!feedback ? "bg-indigo-100 ring-2 ring-indigo-300" : ""}
+              `}
             style={{
               width: HIT_ZONE_SIZE,
               height: HIT_ZONE_SIZE,
@@ -315,7 +356,16 @@ export default function Level4({ onGoHome, userId }) {
       )}
 
       {gameState === "report" && (
-        <GameReport onRestart={startGame} onGoHome={onGoHome} />
+        <GameReport
+          onRestart={() => {
+            console.log("[Level4 DEBUG] Play Again clicked.");
+            startGame();
+          }}
+          onGoHome={() => {
+            console.log("[Level4 DEBUG] Report - Back to Home clicked.");
+            onGoHome();
+          }}
+        />
       )}
 
       <style>{`
@@ -324,7 +374,7 @@ export default function Level4({ onGoHome, userId }) {
         }
         @keyframes fade-in {
           from { opacity: 0;}
-          to { opacity:1;}
+          to { opacity: 1;}
         }
       `}</style>
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 // The letters, words, and symbols for the quiz
 const gameData = [
@@ -25,13 +25,12 @@ const shuffleArray = (array) => {
   return a;
 };
 
-// TTS for the letter only
 function speakLetter(letter) {
   if (typeof window.speechSynthesis === 'undefined' || !letter) return;
   window.speechSynthesis.cancel();
   const utter = new window.SpeechSynthesisUtterance(letter);
   utter.lang = 'en-US';
-  utter.rate = 0.7; // Slow for clarity
+  utter.rate = 0.7;
   window.speechSynthesis.speak(utter);
 }
 
@@ -43,6 +42,11 @@ const Level3 = ({ onGoHome, userId }) => {
   const [reactionTimes, setReactionTimes] = useState([]);
   const [isAnswered, setIsAnswered] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+
+  // Helper to log state transitions
+  useEffect(() => {
+    console.log("[DEBUG] gameOver:", gameOver, "questions.length:", questions.length, "userId:", userId);
+  }, [gameOver, questions.length, userId]);
 
   // Generate and shuffle questions and options
   const generateQuestions = () => {
@@ -56,6 +60,7 @@ const Level3 = ({ onGoHome, userId }) => {
 
   // On mount or restart
   useEffect(() => {
+    console.log("[DEBUG] Game initializing or resetting.");
     setQuestions(generateQuestions());
     setScore(0);
     setCurrent(0);
@@ -69,30 +74,34 @@ const Level3 = ({ onGoHome, userId }) => {
     if (questions.length > 0 && !gameOver) {
       setStartTime(Date.now());
       setIsAnswered(false);
+      console.log("[DEBUG] Speaking letter:", questions[current]?.letter);
       speakLetter(questions[current]?.letter);
     }
   }, [current, questions, gameOver]);
 
-  // Handle answer: record time, check only for correctness
+  // Handle answer: record time, check correctness only
   const handleAnswer = (symbol) => {
     if (isAnswered) return;
     setIsAnswered(true);
     const correct = questions[current].symbol;
     const rt = (Date.now() - startTime) / 1000;
     setReactionTimes(prev => [...prev, rt]);
+    console.log("[DEBUG] Clicked:", symbol, "| correct?:", symbol === correct, "| RT:", rt);
     if (symbol === correct) setScore(prev => prev + 1);
 
     setTimeout(() => {
       if (current < questions.length - 1) {
         setCurrent(c => c + 1);
       } else {
+        console.log("[DEBUG] All questions done, setting gameOver TRUE");
         setGameOver(true);
       }
-    }, 1000); // Short pause before next question/end
+    }, 1000);
   };
 
-  // Save the session at the end (both to Firestore and localStorage)
+  // Save the session at the end (both to Firestore and localStorage), with debug logs
   useEffect(() => {
+    console.log("[DEBUG] useEffect for session save running...", { gameOver, questionsLen: questions.length });
     if (gameOver && questions.length) {
       const total = questions.length;
       const correct = score;
@@ -119,14 +128,39 @@ const Level3 = ({ onGoHome, userId }) => {
         status: "Completed",
         timeTaken: total_time,
       };
+      console.log("💾 [DEBUG] About to save session object:", session);
+
       // Save to localStorage
-      const allSessions = JSON.parse(localStorage.getItem('gameSessions') || '[]');
-      allSessions.push(session);
-      localStorage.setItem('gameSessions', JSON.stringify(allSessions));
-      // Save to Firestore
+      try {
+        const allSessions = JSON.parse(localStorage.getItem('gameSessions') || '[]');
+        allSessions.push(session);
+        localStorage.setItem('gameSessions', JSON.stringify(allSessions));
+        console.log("💾 [DEBUG] Saved session to localStorage:", session);
+      } catch (e) {
+        console.error("🔥 [DEBUG] Error saving to localStorage:", e, session);
+      }
+
+      // Save to Firestore using setDoc and merge
       if (userId) {
-        const userDocRef = doc(db, "artifacts", "default-app-id", "users", userId);
-        updateDoc(userDocRef, { sessions: arrayUnion(session) }).catch(console.error);
+        const saveSessionWithSetDoc = async () => {
+          try {
+            const userDocRef = doc(db, "artifacts", "default-app-id", "users", userId);
+            const userSnap = await getDoc(userDocRef);
+            let existingSessions = [];
+            if (userSnap.exists()) {
+              const data = userSnap.data();
+              existingSessions = Array.isArray(data.sessions) ? data.sessions : [];
+            }
+            existingSessions.push(session);
+            await setDoc(userDocRef, { sessions: existingSessions }, { merge: true });
+            console.log("✅ [DEBUG] Saved session with setDoc to Firestore:", session);
+          } catch (err) {
+            console.error("🔥 [DEBUG] Failed to save session with setDoc:", err, session);
+          }
+        };
+        saveSessionWithSetDoc();
+      } else {
+        console.warn("⚠️ [DEBUG] Skipping Firestore save: userId is", userId);
       }
     }
   }, [gameOver, questions.length, score, reactionTimes, userId]);
@@ -147,6 +181,7 @@ const Level3 = ({ onGoHome, userId }) => {
           </p>
           <button
             onClick={() => {
+              console.log("[DEBUG] Restarting game!");
               setQuestions(generateQuestions());
               setScore(0);
               setCurrent(0);
@@ -157,8 +192,11 @@ const Level3 = ({ onGoHome, userId }) => {
             className="w-full bg-[#3b82f6] hover:bg-[#2563eb] text-white font-bold py-3 px-6 rounded-lg text-xl mt-3 transition-transform transform hover:scale-105">
             Play Again
           </button>
-          <button 
-            onClick={onGoHome}
+          <button
+            onClick={() => {
+              console.log("[DEBUG] Back to Kid List clicked");
+              onGoHome();
+            }}
             className="block w-full text-center mt-4 bg-gray-200 text-gray-800 font-semibold py-3 px-6 rounded-lg hover:bg-gray-300">
             Back to Kid List
           </button>
@@ -168,6 +206,7 @@ const Level3 = ({ onGoHome, userId }) => {
   }
 
   if (questions.length === 0) {
+    console.log("[DEBUG] Still loading questions...");
     return <div className="flex items-center justify-center min-h-screen">Loading Game...</div>;
   }
 
@@ -177,7 +216,10 @@ const Level3 = ({ onGoHome, userId }) => {
     <div className="relative flex flex-col items-center justify-center min-h-screen w-full bg-gradient-to-br from-[#f0f4f8] to-[#dbeafe] p-4 font-poppins">
       <div className="absolute top-4 left-4">
         <button
-          onClick={onGoHome}
+          onClick={() => {
+            console.log("[DEBUG] Manual exit to Kid List");
+            onGoHome();
+          }}
           className="bg-white text-gray-700 px-4 py-2 rounded-xl shadow-md hover:bg-gray-200 transition-all flex items-center"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
@@ -196,7 +238,6 @@ const Level3 = ({ onGoHome, userId }) => {
               <span className="text-8xl font-bold text-[#1e40af]">{q.letter}</span>
               <span className="text-4xl text-gray-700">({q.word})</span>
             </div>
-            {/* Only the letter is pronounced via TTS */}
           </div>
           <div className="grid grid-cols-2 gap-4">
             {q.options.map((symbol, idx) => (
