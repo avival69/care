@@ -9,8 +9,9 @@ import { getAuth } from 'firebase/auth';
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+
 const firebaseConfig = {
-  apiKey: "AIzaSyAyE8IX7tr-IXFBM8ti7nShzNh0DvrO2Sg",
+  apiKey: process.env.FIREBASE,
   authDomain: "karegame-fd4d0.firebaseapp.com",
   projectId: "karegame-fd4d0",
   storageBucket: "karegame-fd4d0.firebasestorage.app",

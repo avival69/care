@@ -35,6 +35,10 @@ const GameReport = ({ onRestart, onGoHome }) => (
 );
 
 export default function Level4({ onGoHome, userId }) {
+  // Store fetched user age here
+  const [age, setAge] = useState(null);
+
+  // Game states: intro -> playing -> report
   const [gameState, setGameState] = useState("intro");
   const [targetSymbol, setTargetSymbol] = useState(null);
   const [stats, setStats] = useState({
@@ -52,18 +56,50 @@ export default function Level4({ onGoHome, userId }) {
   const spawnIntervalId = useRef();
   const gameTimeoutId = useRef();
 
+  // Fetch user age from Firestore on mount or userId change
+  useEffect(() => {
+    if (!userId) {
+      console.warn("[Level4 DEBUG] No userId provided, skipping age fetch.");
+      return;
+    }
+
+    const fetchUserAge = async () => {
+      try {
+        const userDocRef = doc(db, "artifacts", "default-app-id", "users", userId);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          if (data.age) {
+            setAge(data.age);
+            console.log("[Level4 DEBUG] Fetched user age:", data.age);
+          } else {
+            console.warn("[Level4 DEBUG] Age field missing in user document.");
+          }
+        } else {
+          console.warn("[Level4 DEBUG] User document not found.");
+        }
+      } catch (err) {
+        console.error("[Level4 DEBUG] Error fetching user age:", err);
+      }
+    };
+
+    fetchUserAge();
+  }, [userId]);
+
+
   // Debug: Log state transitions
   useEffect(() => {
-    console.log("[Level4 DEBUG] gameState:", gameState, "| targetSymbol:", targetSymbol, "| userId:", userId);
-  }, [gameState, targetSymbol, userId]);
+    console.log("[Level4 DEBUG] gameState:", gameState, "| targetSymbol:", targetSymbol, "| userId:", userId, "| age:", age);
+  }, [gameState, targetSymbol, userId, age]);
 
-  // Cleanup all timers/loops
+  // Cleanup timers & loops
   const cleanup = () => {
     if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     if (spawnIntervalId.current) clearInterval(spawnIntervalId.current);
     if (gameTimeoutId.current) clearTimeout(gameTimeoutId.current);
   };
 
+  // Start new game
   const startGame = () => {
     cleanup();
     const newTargetSymbol = ALL_SYMBOLS[Math.floor(Math.random() * ALL_SYMBOLS.length)];
@@ -80,6 +116,7 @@ export default function Level4({ onGoHome, userId }) {
     console.log("[Level4 DEBUG] Game started. New target:", newTargetSymbol);
   };
 
+  // Spawn game object
   const spawnObject = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -90,20 +127,23 @@ export default function Level4({ onGoHome, userId }) {
       : ALL_SYMBOLS.filter((s) => s !== targetSymbol)[
           Math.floor(Math.random() * (ALL_SYMBOLS.length - 1))
         ];
+
     if (isTarget) {
       setStats((prev) => ({ ...prev, totalTargets: prev.totalTargets + 1 }));
       console.log("[Level4 DEBUG] Spawned TARGET symbol:", symbol);
     }
-    // Random edge start position
+
+    // Random edge spawn position
     const edges = [
       () => ({ x: Math.random() * canvas.width, y: -30 }),
       () => ({ x: canvas.width + 30, y: Math.random() * canvas.height }),
       () => ({ x: Math.random() * canvas.width, y: canvas.height + 30 }),
       () => ({ x: -30, y: Math.random() * canvas.height }),
     ];
+    
     const { x: startX, y: startY } = edges[Math.floor(Math.random() * 4)]();
 
-    // Random target in hit zone
+    // Random target location inside hit zone
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     const targetX = centerX + (Math.random() - 0.5) * HIT_ZONE_SIZE * 0.8;
@@ -128,7 +168,7 @@ export default function Level4({ onGoHome, userId }) {
     });
   }, [targetSymbol]);
 
-  // The animation/game loop
+  // Game animation loop
   const gameLoop = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -148,6 +188,7 @@ export default function Level4({ onGoHome, userId }) {
       ctx.textBaseline = "middle";
       ctx.fillText(obj.symbol, obj.x, obj.y);
 
+      // Mark if object is in zone at least once
       if (
         obj.x > zoneX &&
         obj.x < zoneX + HIT_ZONE_SIZE &&
@@ -156,6 +197,8 @@ export default function Level4({ onGoHome, userId }) {
       ) {
         obj.hasBeenInZone = true;
       }
+
+      // Remove out of bounds objects
       if (
         obj.x < -40 ||
         obj.x > canvas.width + 40 ||
@@ -169,10 +212,11 @@ export default function Level4({ onGoHome, userId }) {
         gameObjectsRef.current.splice(idx, 1);
       }
     });
+
     animationFrameId.current = requestAnimationFrame(gameLoop);
   }, []);
 
-  // Start or cleanup game on state change
+  // Start/cleanup game on state changes
   useEffect(() => {
     if (gameState === "playing") {
       animationFrameId.current = requestAnimationFrame(gameLoop);
@@ -185,10 +229,13 @@ export default function Level4({ onGoHome, userId }) {
     return cleanup;
   }, [gameState, gameLoop, spawnObject]);
 
+  // Handle player clicking inside hit zone
   const handleClickZone = () => {
     if (gameState !== "playing") return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const zoneX = (canvas.width - HIT_ZONE_SIZE) / 2;
     const zoneY = (canvas.height - HIT_ZONE_SIZE) / 2;
 
@@ -200,6 +247,7 @@ export default function Level4({ onGoHome, userId }) {
         obj.y > zoneY &&
         obj.y < zoneY + HIT_ZONE_SIZE
     );
+
     if (targetObj) {
       setStats((prev) => ({
         ...prev,
@@ -218,10 +266,11 @@ export default function Level4({ onGoHome, userId }) {
       setFeedback("incorrect");
       console.log("[Level4 DEBUG] Incorrect click (false alarm).");
     }
+
     setTimeout(() => setFeedback(""), 300);
   };
 
-  // Resize canvas to window size
+  // Resize canvas to full window size
   useEffect(() => {
     const resize = () => {
       if (canvasRef.current) {
@@ -234,13 +283,18 @@ export default function Level4({ onGoHome, userId }) {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
-  // Save session data to localStorage and Firestore on report, with debug logs
+  // Save session to localStorage and Firestore on report, with age included
   useEffect(() => {
-    console.log("[Level4 DEBUG] Session save effect running...", { gameState, totalTargets: stats.totalTargets });
-    if (gameState !== "report" || stats.totalTargets === 0) return;
+    console.log("[Level4 DEBUG] Session save effect running...", { gameState, totalTargets: stats.totalTargets, age });
+
+    if (gameState !== "report" || stats.totalTargets === 0 || age == null) {
+      if (age == null) console.warn("[Level4 DEBUG] Not saving session: age not available yet.");
+      return;
+    }
 
     const sessionObj = {
       kid: userId || "unknown",
+      age,
       date: new Date().toISOString(),
       game: "Symbol Spotter",
       hits: stats.hits,
@@ -265,7 +319,7 @@ export default function Level4({ onGoHome, userId }) {
       console.error("🔥 [Level4 DEBUG] Error saving to localStorage:", err, sessionObj);
     }
 
-    // Save to Firestore using setDoc with getDoc to merge safely
+    // Save to Firestore using setDoc with merge
     if (userId) {
       const saveSessionWithSetDoc = async () => {
         try {
@@ -287,7 +341,7 @@ export default function Level4({ onGoHome, userId }) {
     } else {
       console.warn("⚠️ [Level4 DEBUG] Skipping Firestore save: userId is", userId);
     }
-  }, [gameState, stats, userId]);
+  }, [gameState, stats, userId, age]);
 
   return (
     <div className="relative w-full min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col items-center justify-center p-4 font-sans overflow-hidden">
@@ -306,6 +360,7 @@ export default function Level4({ onGoHome, userId }) {
           <span>Back to Home</span>
         </button>
       </div>
+
       {gameState === "intro" && (
         <div className="text-center bg-white p-8 rounded-2xl shadow-xl max-w-md animate-fade-in">
           <h1 className="text-4xl font-bold mb-4 text-indigo-900">Symbol Spotter</h1>

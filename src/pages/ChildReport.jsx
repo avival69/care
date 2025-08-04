@@ -47,7 +47,7 @@ export default function ChildReport({ name, onBack }) {
   const [geminiText, setGeminiText] = useState(null);
 const [geminiLoading, setGeminiLoading] = useState(false);
 const [geminiErr, setGeminiErr] = useState(null);
-const GEMINI_API_KEY = "AIzaSyAf27LCnJlYwArLjefly8RnPAj_YMg2Ae0"; // <--- Paste your key here
+const GEMINI_API_KEY = process.env.GEMINI; // <--- Paste your key here
 
 useEffect(() => {
   if (!profile) return;
@@ -82,7 +82,7 @@ Provide actionable recommendations for caregivers or therapists, including games
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-goog-api-key": "AIzaSyAf27LCnJlYwArLjefly8RnPAj_YMg2Ae0",
+      "X-goog-api-key": GEMINI_API_KEY,
     },
     body: JSON.stringify({
       contents: [
@@ -672,7 +672,7 @@ Provide actionable recommendations for caregivers or therapists, including games
 
         {/* AI Summary Placeholder */}
         <section className="max-w-screen-lg mx-auto bg-indigo-50 p-6 rounded shadow my-12 text-left">
-  <h2 className="text-xl font-bold text-indigo-900 mb-4">AI Summary (Gemini)</h2>
+  <h2 className="text-xl font-bold text-indigo-900 mb-4">AI Summary</h2>
   <pre className="whitespace-pre-wrap select-text font-mono text-base text-indigo-900 min-h-[8rem]">
     {geminiLoading && "Loading..."}
     {geminiErr && `Error: ${geminiErr}`}
