@@ -11,7 +11,7 @@ import { getAuth } from 'firebase/auth';
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE,
+  apiKey: import.meta.env.VITE_FIREBASE,
   authDomain: "karegame-fd4d0.firebaseapp.com",
   projectId: "karegame-fd4d0",
   storageBucket: "karegame-fd4d0.firebasestorage.app",

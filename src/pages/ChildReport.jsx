@@ -47,7 +47,7 @@ export default function ChildReport({ name, onBack }) {
   const [geminiText, setGeminiText] = useState(null);
 const [geminiLoading, setGeminiLoading] = useState(false);
 const [geminiErr, setGeminiErr] = useState(null);
-const GEMINI_API_KEY = process.env.GEMINI; // <--- Paste your key here
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI; // <--- Paste your key here
 
 useEffect(() => {
   if (!profile) return;
